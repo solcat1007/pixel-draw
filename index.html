@@ -2,71 +2,324 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>像素画板 | Pixel Draw</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>像素画板 · Pixel Draw</title>
+<meta name="description" content="绘制像素画，支持调色板、橡皮擦与 PNG 导出">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg">
+<meta name="theme-color" content="#ec407a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="像素画板">
 <style>
-:root{--c:#00BCD4;--cd:#0097A7;--w:#fff;--bg:#f0f8f9;--t:#333}
+
+:root{
+  --bg:#f4f5f7;           /* 页面底色：浅灰，避免纯白刺眼 */
+  --bg-glow:#ffffff;      /* 顶部径向光晕色，制造轻微的空间感 */
+  --surface:#ffffff;      /* 卡片底色 */
+  --surface-2:#fafbfc;    /* 卡片内的次级区块（输入框、结果区） */
+  --text:#16181d;         /* 主文字 */
+  --soft:#5d636e;         /* 次要文字 */
+  --mute:#8b929e;         /* 弱化文字（提示、单位、占位符） */
+  --line:#e6e8ec;         /* 分割线与边框 */
+  --accent:#26a69a;       /* 强调色（各玩具不同） */
+  --accent-soft:#e6f4f2;  /* 强调色的浅色版，用于底色块 */
+  --r-lg:20px; --r-md:14px; --r-sm:10px;
+  --ease:cubic-bezier(.4,0,.2,1);
+  --shadow:0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--t);display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;overflow:hidden;user-select:none}
-.lang-btn{position:fixed;top:20px;left:20px;z-index:100;padding:8px 16px;background:var(--c);color:var(--w);border:none;border-radius:20px;cursor:pointer;font-size:14px;font-weight:600;transition:.2s}
-.lang-btn:hover{background:var(--cd)}
-.fs-btn{position:fixed;top:20px;right:20px;z-index:100;padding:8px 16px;background:var(--c);color:var(--w);border:none;border-radius:20px;cursor:pointer;font-size:14px;font-weight:600;transition:.2s}
-.fs-btn:hover{background:var(--cd)}
-h2{color:var(--c);margin-bottom:10px;font-weight:600}
-.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;margin-bottom:10px}
-.toolbar button,.toolbar input{padding:8px 16px;border:none;border-radius:20px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:600;transition:.2s}
-.toolbar button{background:var(--c);color:var(--w)}
-.toolbar button:hover{background:var(--cd)}
-.toolbar button.active{background:var(--cd);box-shadow:0 0 0 3px rgba(0,188,212,0.3)}
-.toolbar input[type=color]{width:40px;height:40px;padding:2px;border-radius:50%;border:2px solid var(--c);cursor:pointer}
-canvas{border:2px solid var(--c);background:var(--w);cursor:crosshair;border-radius:4px;box-shadow:0 4px 16px rgba(0,188,212,0.15);image-rendering:pixelated}
-.size-label{font-size:14px;color:var(--c);font-weight:600}
-@media(max-width:600px){canvas{width:90vw!important;height:auto!important}}
+
+body{
+  font-family:system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  background:var(--bg);
+  /* 顶部一层极淡光晕，比死板的纯色更有层次 */
+  background-image:radial-gradient(120% 80% at 50% 0%, var(--bg-glow) 0%, rgba(255,255,255,0) 62%);
+  background-attachment:fixed;
+  color:var(--text);
+  min-height:100dvh;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:24px; -webkit-font-smoothing:antialiased;
+}
+
+.app{width:100%; max-width:480px; display:flex; flex-direction:column; align-items:center; gap:20px}
+
+.head{text-align:center}
+.head h1{font-size:22px; font-weight:600; letter-spacing:.5px}
+.head p{font-size:13px; color:var(--mute); margin-top:6px}
+
+.card{
+  width:100%; background:var(--surface); border:1px solid var(--line);
+  border-radius:var(--r-lg); padding:22px; box-shadow:var(--shadow);
+}
+
+.stage{
+  width:288px; height:288px; position:relative;
+  background:var(--surface); border:1px solid var(--line);
+  border-radius:50%; box-shadow:var(--shadow);
+  display:flex; align-items:center; justify-content:center;
+}
+.stage canvas{border-radius:50%}
+
+.phase{
+  font-size:29px; font-weight:300; letter-spacing:6px;
+  color:var(--accent); min-height:42px; text-align:center;
+  transition:color .4s var(--ease);
+}
+.cd{font-size:15px; color:var(--soft); font-variant-numeric:tabular-nums; min-height:22px}
+.meta{font-size:13px; color:var(--mute); min-height:20px; text-align:center}
+
+.row{display:flex; gap:10px; flex-wrap:wrap; justify-content:center}
+.stats{display:flex; gap:10px; width:100%}
+.stat{
+  flex:1; background:var(--surface-2); border:1px solid var(--line);
+  border-radius:var(--r-md); padding:12px; text-align:center;
+}
+.stat .k{font-size:11px; color:var(--mute); letter-spacing:1px}
+.stat .v{font-size:21px; font-weight:600; margin-top:3px; font-variant-numeric:tabular-nums}
+
+.chip{
+  padding:9px 18px; font-size:13px; font-weight:500; font-family:inherit;
+  background:var(--surface); color:var(--soft);
+  border:1px solid var(--line); border-radius:999px; cursor:pointer;
+  transition:all .2s var(--ease);
+}
+.chip:hover{border-color:var(--accent); color:var(--accent)}
+.chip.active{
+  background:var(--accent); border-color:var(--accent); color:#fff;
+  box-shadow:0 4px 14px rgba(0,0,0,.14);
+}
+
+.btn{
+  padding:13px 42px; font-size:15px; font-weight:600; font-family:inherit;
+  letter-spacing:3px; background:var(--accent); color:#fff;
+  border:none; border-radius:var(--r-md); cursor:pointer;
+  transition:transform .15s var(--ease), box-shadow .2s var(--ease);
+  box-shadow:0 6px 20px rgba(0,0,0,.16);
+}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn.ghost{background:transparent; border:1px solid var(--line); color:var(--soft); box-shadow:none}
+
+.lang{
+  position:fixed; top:16px; right:16px; z-index:20;
+  padding:7px 14px; font-size:12px; font-weight:600; font-family:inherit;
+  background:var(--surface); color:var(--soft);
+  border:1px solid var(--line); border-radius:999px; cursor:pointer;
+  transition:all .2s var(--ease);
+}
+.lang:hover{border-color:var(--accent); color:var(--accent)}
+
+.hint{font-size:12px; color:var(--mute); text-align:center; line-height:1.7}
+
+@media (max-width:380px){
+  .stage{width:250px;height:250px}
+  .phase{font-size:25px; letter-spacing:4px}
+}
+
+:root{ --accent:#ec407a; --accent-soft:#fce4ec; }
+
+canvas.px{
+  width:100%; max-width:320px; aspect-ratio:1; display:block; margin:0 auto;
+  border:1px solid var(--line); border-radius:var(--r-md);
+  background:
+    linear-gradient(45deg,#f0f0f0 25%,transparent 25%,transparent 75%,#f0f0f0 75%),
+    linear-gradient(45deg,#f0f0f0 25%,#fff 25%,#fff 75%,#f0f0f0 75%);
+  background-size:16px 16px;
+  background-position:0 0,8px 8px;
+  touch-action:none;
+}
+.palette{display:flex; gap:7px; flex-wrap:wrap; justify-content:center; margin-top:14px}
+.sw{
+  width:30px; height:30px; border-radius:8px; cursor:pointer;
+  border:2px solid transparent; transition:transform .12s var(--ease);
+}
+.sw:hover{transform:scale(1.1)}
+.sw.on{border-color:var(--text)}
+
 </style>
 </head>
 <body>
-<button class="lang-btn" onclick="toggleLang()">中/EN</button>
-<button class="fs-btn" onclick="toggleFS()">全屏</button>
-<h2 data-key="title">像素画板</h2>
-<div class="toolbar">
-  <button onclick="setTool('pen')" id="btnPen" class="active" data-key="pen">画笔</button>
-  <button onclick="setTool('eraser')" id="btnEraser" data-key="eraser">橡皮</button>
-  <button onclick="setTool('fill')" id="btnFill" data-key="fill">填充</button>
-  <input type="color" id="colorPicker" value="#00BCD4" onchange="pickColor()">
-  <span class="size-label" data-key="size">网格:</span>
-  <button onclick="changeGrid(-4)" data-key="smaller">-</button>
-  <span id="gridSize" style="margin:0 4px;font-weight:600;color:var(--c)">16</span>
-  <button onclick="changeGrid(4)" data-key="larger">+</button>
-  <button onclick="clearCanvas()" data-key="clear">清空</button>
-  <button onclick="exportPNG()" data-key="export">导出PNG</button>
+<button class="lang" id="langBtn" onclick="toggleLang()">EN</button>
+<div class="app">
+
+  <div class="head">
+    <h1 id="t_title">像素画板</h1>
+  </div>
+
+  <div class="card">
+    <canvas class="px" id="px" width="320" height="320"></canvas>
+    <div class="palette" id="palette"></div>
+  </div>
+
+  <div class="row">
+    <button class="btn ghost" id="eraserBtn" onclick="toggleEraser()">橡皮擦</button>
+    <button class="btn ghost" onclick="clearAll()">清空</button>
+    <button class="btn" onclick="exportPng()">导出 PNG</button>
+  </div>
+
+  <div class="hint" id="t_hint">点击或拖动绘制 · 导出为透明背景 PNG</div>
+
 </div>
-<canvas id="canvas" width="512" height="512"></canvas>
 <script>
-/* ===== 像素画板 / Pixel Draw ===== */
-var i18n={zh:{title:"像素画板",pen:"画笔",eraser:"橡皮",fill:"填充",size:"网格:",smaller:"-",larger:"+",clear:"清空",export:"导出PNG"},en:{title:"Pixel Draw",pen:"Pen",eraser:"Eraser",fill:"Fill",size:"Grid:",smaller:"-",larger:"+",clear:"Clear",export:"Export PNG"}};
-var lang="zh";
-function t(key){return i18n[lang][key]}
-function updateUI(){document.querySelectorAll("[data-key]").forEach(function(el){el.textContent=t(el.getAttribute("data-key"))})}
-function toggleLang(){lang=lang==="zh"?"en":"zh";updateUI()}
-function toggleFS(){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}
-var canvas=document.getElementById("canvas"),ctx=canvas.getContext("2d");
-var gridSize=16,cellSize=canvas.width/gridSize,tool="pen",color="#00BCD4",drawing=false;
-var pixels=[];
-function initPixels(){pixels=[];for(var y=0;y<gridSize;y++){pixels[y]=[];for(var x=0;x<gridSize;x++)pixels[y][x]="#fff"}}
-function drawGrid(){ctx.clearRect(0,0,canvas.width,canvas.height);for(var y=0;y<gridSize;y++)for(var x=0;x<gridSize;x++){ctx.fillStyle=pixels[y][x];ctx.fillRect(x*cellSize,y*cellSize,cellSize,cellSize);ctx.strokeStyle="#e0e0e0";ctx.lineWidth=0.5;ctx.strokeRect(x*cellSize,y*cellSize,cellSize,cellSize)}}
-function getCell(e){var rect=canvas.getBoundingClientRect();var scaleX=canvas.width/rect.width,scaleY=canvas.height/rect.height;var cx=Math.floor((e.clientX-rect.left)*scaleX/cellSize);var cy=Math.floor((e.clientY-rect.top)*scaleY/cellSize);return{x:cx,y:cy}}
-function paint(x,y){if(x<0||y<0||x>=gridSize||y>=gridSize)return;var c=tool==="eraser"?"#fff":color;pixels[y][x]=c;drawGrid()}
-function floodFill(x,y,targetC){if(x<0||y<0||x>=gridSize||y>=gridSize)return;if(pixels[y][x]!==targetC)return;if(pixels[y][x]===color&&tool==="fill")return;pixels[y][x]=color;floodFill(x+1,y,targetC);floodFill(x-1,y,targetC);floodFill(x,y+1,targetC);floodFill(x,y-1,targetC)}
-canvas.addEventListener("mousedown",function(e){drawing=true;var c=getCell(e);if(tool==="fill"){floodFill(c.x,c.y,pixels[c.y][c.x]);drawGrid()}else{paint(c.x,c.y)}});
-canvas.addEventListener("mousemove",function(e){if(!drawing||tool==="fill")return;var c=getCell(e);paint(c.x,c.y)});
-canvas.addEventListener("mouseup",function(){drawing=false});
-canvas.addEventListener("mouseleave",function(){drawing=false});
-function setTool(t){tool=t;document.getElementById("btnPen").classList.toggle("active",t==="pen");document.getElementById("btnEraser").classList.toggle("active",t==="eraser");document.getElementById("btnFill").classList.toggle("active",t==="fill")}
-function pickColor(){color=document.getElementById("colorPicker").value}
-function changeGrid(d){gridSize=Math.max(8,Math.min(64,gridSize+d));cellSize=canvas.width/gridSize;document.getElementById("gridSize").textContent=gridSize;initPixels();drawGrid()}
-function clearCanvas(){initPixels();drawGrid()}
-function exportPNG(){var link=document.createElement("a");link.download="pixel-art.png";link.href=canvas.toDataURL();link.click()}
-initPixels();drawGrid();updateUI();
+
+/* ============================================================
+ * 像素画板
+ * ------------------------------------------------------------
+ * 画布逻辑：
+ *   - 逻辑网格 32×32，每个格子 10px，画布 320×320
+ *   - 网格数据存在 cells 二维数组里，null 表示透明（未涂色）
+ *   - 绘制 = 改 cells → 重画整个画布
+ *
+ * 为什么维护 cells 而不是直接读像素？
+ *   因为要支持「透明背景导出」。如果只在 canvas 上涂色，
+ *   就必须先铺一层白底，导出就没法保留透明。
+ *   把颜色存在数据层、绘制时才上屏，就能随时决定要不要背景。
+ * ========================================================== */
+
+const N = 32;                 /* 32 × 32 格 */
+const PIX = 320 / N;          /* 每格 10px */
+
+const COLORS = [
+  '#000000','#424242','#9e9e9e','#ffffff',
+  '#d32f2f','#f57c00','#fbc02d','#388e3c',
+  '#1976d2','#512da8','#ec407a','#795548'
+];
+
+let cells = [];
+let current = '#000000';
+let erasing = false;
+let drawing = false;
+
+const px = document.getElementById('px');
+const pctx = px.getContext('2d');
+
+/* ---------- 初始化 ---------- */
+function initGrid(){
+  cells = [];
+  for (let r=0;r<N;r++){
+    const row = [];
+    for (let c=0;c<N;c++) row.push(null);
+    cells.push(row);
+  }
+}
+
+/* ---------- 调色板 ---------- */
+function buildPalette(){
+  const box = document.getElementById('palette');
+  box.innerHTML = '';
+
+  COLORS.forEach(function(col){
+    const s = document.createElement('div');
+    s.className = 'sw' + (col === current && !erasing ? ' on' : '');
+    s.style.background = col;
+    s.onclick = function(){
+      current = col; erasing = false;
+      buildPalette();
+    };
+    box.appendChild(s);
+  });
+
+  /* 橡皮擦作为最后一个色位，点击后进入擦除模式 */
+  const e = document.createElement('div');
+  e.className = 'sw' + (erasing ? ' on' : '');
+  e.style.background = '#ffffff';
+  e.style.border = '1px dashed var(--line)';
+  e.textContent = '⌫';
+  e.style.display = 'flex';
+  e.style.alignItems = 'center';
+  e.style.justifyContent = 'center';
+  e.onclick = function(){ toggleEraser(); };
+  box.appendChild(e);
+}
+
+function toggleEraser(){ erasing = !erasing; buildPalette(); }
+
+/* ---------- 绘制 ---------- */
+
+/** 全量重绘：先清透明，再逐格填色，最后画网格线 */
+function paint(){
+  pctx.clearRect(0,0,320,320);
+
+  for (let r=0;r<N;r++){
+    for (let c=0;c<N;c++){
+      if (cells[r][c]){
+        pctx.fillStyle = cells[r][c];
+        pctx.fillRect(c*PIX, r*PIX, PIX, PIX);
+      }
+    }
+  }
+
+  // 网格线：用极淡的灰色，避免干扰画面
+  pctx.strokeStyle = 'rgba(0,0,0,.06)';
+  pctx.lineWidth = 1;
+  for (let i=0;i<=N;i++){
+    pctx.beginPath();
+    pctx.moveTo(i*PIX, 0); pctx.lineTo(i*PIX, 320);
+    pctx.stroke();
+    pctx.beginPath();
+    pctx.moveTo(0, i*PIX); pctx.lineTo(320, i*PIX);
+    pctx.stroke();
+  }
+}
+
+/** 把鼠标/触摸坐标换算成格子坐标并落笔 */
+function put(clientX, clientY){
+  const rect = px.getBoundingClientRect();
+  // 注意用 rect 做换算：canvas 的 CSS 尺寸可能被响应式缩放过
+  const x = Math.floor((clientX - rect.left) / rect.width  * N);
+  const y = Math.floor((clientY - rect.top)  / rect.height * N);
+  if (x < 0 || y < 0 || x >= N || y >= N) return;
+  cells[y][x] = erasing ? null : current;
+  paint();
+}
+
+/* 鼠标事件 */
+px.addEventListener('mousedown', function(e){ drawing = true; put(e.clientX, e.clientY); });
+window.addEventListener('mouseup', function(){ drawing = false; });
+px.addEventListener('mousemove', function(e){ if (drawing) put(e.clientX, e.clientY); });
+
+/* 触摸事件：监听 touchmove 并阻止默认滚动，才能连续画 */
+px.addEventListener('touchstart', function(e){
+  drawing = true;
+  put(e.touches[0].clientX, e.touches[0].clientY);
+  e.preventDefault();
+}, {passive:false});
+px.addEventListener('touchmove', function(e){
+  if (drawing) put(e.touches[0].clientX, e.touches[0].clientY);
+  e.preventDefault();
+}, {passive:false});
+px.addEventListener('touchend', function(){ drawing = false; });
+
+/** 清空画布（保留网格） */
+function clearAll(){ initGrid(); paint(); }
+
+/** 导出 PNG：不加背景，透明的格子直接保持透明 */
+function exportPng(){
+  const url = px.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'pixel-art.png';
+  a.click();
+}
+
+function refresh(){
+  document.getElementById('langBtn').textContent = (lang==='zh') ? 'EN' : '中';
+}
+function toggleLang(){ lang = (lang==='zh') ? 'en' : 'zh'; refresh(); }
+
+let lang = 'zh';
+initGrid();
+paint();
+refresh();
+
+/* ---------- PWA 注册 ----------
+ * 注册 Service Worker 后本页被缓存，断网也能打开。
+ * 放在最后且 catch 掉异常：即使浏览器不支持也不影响正常功能。 */
+if ('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('./sw.js').catch(function(){});
+  });
+}
 </script>
 </body>
 </html>
