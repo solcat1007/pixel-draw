@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>像素画板 | Pixel Draw</title>
+<style>
+:root{--c:#00BCD4;--cd:#0097A7;--w:#fff;--bg:#f0f8f9;--t:#333}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--t);display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;overflow:hidden;user-select:none}
+.lang-btn{position:fixed;top:20px;left:20px;z-index:100;padding:8px 16px;background:var(--c);color:var(--w);border:none;border-radius:20px;cursor:pointer;font-size:14px;font-weight:600;transition:.2s}
+.lang-btn:hover{background:var(--cd)}
+.fs-btn{position:fixed;top:20px;right:20px;z-index:100;padding:8px 16px;background:var(--c);color:var(--w);border:none;border-radius:20px;cursor:pointer;font-size:14px;font-weight:600;transition:.2s}
+.fs-btn:hover{background:var(--cd)}
+h2{color:var(--c);margin-bottom:10px;font-weight:600}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;margin-bottom:10px}
+.toolbar button,.toolbar input{padding:8px 16px;border:none;border-radius:20px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:600;transition:.2s}
+.toolbar button{background:var(--c);color:var(--w)}
+.toolbar button:hover{background:var(--cd)}
+.toolbar button.active{background:var(--cd);box-shadow:0 0 0 3px rgba(0,188,212,0.3)}
+.toolbar input[type=color]{width:40px;height:40px;padding:2px;border-radius:50%;border:2px solid var(--c);cursor:pointer}
+canvas{border:2px solid var(--c);background:var(--w);cursor:crosshair;border-radius:4px;box-shadow:0 4px 16px rgba(0,188,212,0.15);image-rendering:pixelated}
+.size-label{font-size:14px;color:var(--c);font-weight:600}
+@media(max-width:600px){canvas{width:90vw!important;height:auto!important}}
+</style>
+</head>
+<body>
+<button class="lang-btn" onclick="toggleLang()">中/EN</button>
+<button class="fs-btn" onclick="toggleFS()">全屏</button>
+<h2 data-key="title">像素画板</h2>
+<div class="toolbar">
+  <button onclick="setTool('pen')" id="btnPen" class="active" data-key="pen">画笔</button>
+  <button onclick="setTool('eraser')" id="btnEraser" data-key="eraser">橡皮</button>
+  <button onclick="setTool('fill')" id="btnFill" data-key="fill">填充</button>
+  <input type="color" id="colorPicker" value="#00BCD4" onchange="pickColor()">
+  <span class="size-label" data-key="size">网格:</span>
+  <button onclick="changeGrid(-4)" data-key="smaller">-</button>
+  <span id="gridSize" style="margin:0 4px;font-weight:600;color:var(--c)">16</span>
+  <button onclick="changeGrid(4)" data-key="larger">+</button>
+  <button onclick="clearCanvas()" data-key="clear">清空</button>
+  <button onclick="exportPNG()" data-key="export">导出PNG</button>
+</div>
+<canvas id="canvas" width="512" height="512"></canvas>
+<script>
+/* ===== 像素画板 / Pixel Draw ===== */
+var i18n={zh:{title:"像素画板",pen:"画笔",eraser:"橡皮",fill:"填充",size:"网格:",smaller:"-",larger:"+",clear:"清空",export:"导出PNG"},en:{title:"Pixel Draw",pen:"Pen",eraser:"Eraser",fill:"Fill",size:"Grid:",smaller:"-",larger:"+",clear:"Clear",export:"Export PNG"}};
+var lang="zh";
+function t(key){return i18n[lang][key]}
+function updateUI(){document.querySelectorAll("[data-key]").forEach(function(el){el.textContent=t(el.getAttribute("data-key"))})}
+function toggleLang(){lang=lang==="zh"?"en":"zh";updateUI()}
+function toggleFS(){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}
+var canvas=document.getElementById("canvas"),ctx=canvas.getContext("2d");
+var gridSize=16,cellSize=canvas.width/gridSize,tool="pen",color="#00BCD4",drawing=false;
+var pixels=[];
+function initPixels(){pixels=[];for(var y=0;y<gridSize;y++){pixels[y]=[];for(var x=0;x<gridSize;x++)pixels[y][x]="#fff"}}
+function drawGrid(){ctx.clearRect(0,0,canvas.width,canvas.height);for(var y=0;y<gridSize;y++)for(var x=0;x<gridSize;x++){ctx.fillStyle=pixels[y][x];ctx.fillRect(x*cellSize,y*cellSize,cellSize,cellSize);ctx.strokeStyle="#e0e0e0";ctx.lineWidth=0.5;ctx.strokeRect(x*cellSize,y*cellSize,cellSize,cellSize)}}
+function getCell(e){var rect=canvas.getBoundingClientRect();var scaleX=canvas.width/rect.width,scaleY=canvas.height/rect.height;var cx=Math.floor((e.clientX-rect.left)*scaleX/cellSize);var cy=Math.floor((e.clientY-rect.top)*scaleY/cellSize);return{x:cx,y:cy}}
+function paint(x,y){if(x<0||y<0||x>=gridSize||y>=gridSize)return;var c=tool==="eraser"?"#fff":color;pixels[y][x]=c;drawGrid()}
+function floodFill(x,y,targetC){if(x<0||y<0||x>=gridSize||y>=gridSize)return;if(pixels[y][x]!==targetC)return;if(pixels[y][x]===color&&tool==="fill")return;pixels[y][x]=color;floodFill(x+1,y,targetC);floodFill(x-1,y,targetC);floodFill(x,y+1,targetC);floodFill(x,y-1,targetC)}
+canvas.addEventListener("mousedown",function(e){drawing=true;var c=getCell(e);if(tool==="fill"){floodFill(c.x,c.y,pixels[c.y][c.x]);drawGrid()}else{paint(c.x,c.y)}});
+canvas.addEventListener("mousemove",function(e){if(!drawing||tool==="fill")return;var c=getCell(e);paint(c.x,c.y)});
+canvas.addEventListener("mouseup",function(){drawing=false});
+canvas.addEventListener("mouseleave",function(){drawing=false});
+function setTool(t){tool=t;document.getElementById("btnPen").classList.toggle("active",t==="pen");document.getElementById("btnEraser").classList.toggle("active",t==="eraser");document.getElementById("btnFill").classList.toggle("active",t==="fill")}
+function pickColor(){color=document.getElementById("colorPicker").value}
+function changeGrid(d){gridSize=Math.max(8,Math.min(64,gridSize+d));cellSize=canvas.width/gridSize;document.getElementById("gridSize").textContent=gridSize;initPixels();drawGrid()}
+function clearCanvas(){initPixels();drawGrid()}
+function exportPNG(){var link=document.createElement("a");link.download="pixel-art.png";link.href=canvas.toDataURL();link.click()}
+initPixels();drawGrid();updateUI();
+</script>
+</body>
+</html>
