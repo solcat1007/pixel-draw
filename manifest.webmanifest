@@ -1,7 +1,7 @@
 {
-  "name": "像素画板 · 小工具",
+  "name": "像素画板 · v2.0",
   "short_name": "像素画板",
-  "description": "绘制像素画并导出图片",
+  "description": "像素画板 v2.0：扩展调色板、撤销重做、PNG 导入导出、网格尺寸调节与一键分享",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
@@ -15,5 +15,6 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "version": "2.0.0"
 }
